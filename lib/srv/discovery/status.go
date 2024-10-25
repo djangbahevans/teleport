@@ -538,7 +538,7 @@ func (s *Server) acquireSemaphore(kind, semaphoreName string) (releaseFn func(),
 
 // acquireSemaphoreForIntegration tries to acquire a semaphore lock for the integration.
 // This allows the process to do two things:
-// - merge the current UserTask with the one stored in the backend, so that no discover-ec2.instance is lost
+// - merge the current UserTask with the one stored in the backend, so that no task items are lost
 // - ensure a single Notification (pending-user-task-integration) is created
 // The former could be achieved using the UserTask name as lock identifier.
 // However, for the latter, we would need a lock for the Integration.
