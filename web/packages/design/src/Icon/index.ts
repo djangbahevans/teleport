@@ -172,6 +172,7 @@ export { PushPinFilled } from './Icons/PushPinFilled';
 export { Question } from './Icons/Question';
 export { Refresh } from './Icons/Refresh';
 export { Restore } from './Icons/Restore';
+export { RocketLaunch } from './Icons/RocketLaunch';
 export { Rows } from './Icons/Rows';
 export { Ruler } from './Icons/Ruler';
 export { Run } from './Icons/Run';
