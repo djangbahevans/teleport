@@ -34,9 +34,9 @@ var (
 type OSUpstreamNameserverSource struct{}
 
 func NewOSUpstreamNameserverSource() (*OSUpstreamNameserverSource, error) {
-	return nil, trace.Wrap(vnetNotImplemented)
+	return &OSUpstreamNameserverSource{}, nil
 }
 
 func (s *OSUpstreamNameserverSource) UpstreamNameservers(ctx context.Context) ([]string, error) {
-	return nil, trace.Wrap(vnetNotImplemented)
+	return []string{"192.168.1.50"}, nil
 }

@@ -266,6 +266,9 @@ func newNetworkStack(cfg *Config) (*NetworkStack, error) {
 		}
 		slog.DebugContext(context.Background(), "Serving DNS on IPv6.", "dns_addr", cfg.DNSIPv6)
 	}
+	if err := ns.addProtocolAddress(tcpip.AddrFrom4([...]byte{100,64,0,3})); err != nil {
+		return ns, trace.Wrap(err)
+	}
 
 	return ns, nil
 }
@@ -275,6 +278,7 @@ func createStack() (*stack.Stack, *channel.Endpoint, error) {
 		NetworkProtocols:   []stack.NetworkProtocolFactory{ipv4network.NewProtocol, ipv6network.NewProtocol},
 		TransportProtocols: []stack.TransportProtocolFactory{tcp.NewProtocol, udp.NewProtocol},
 	})
+	netStack.SetPromiscuousMode(nicID, true)
 
 	const (
 		size     = 512

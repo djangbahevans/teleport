@@ -48,10 +48,6 @@ func receiveTUNDevice(socket *net.UnixListener) (tun.Device, error) {
 	return nil, trace.Wrap(ErrVnetNotImplemented)
 }
 
-func execAdminProcess(ctx context.Context, config daemon.Config) error {
-	return trace.Wrap(ErrVnetNotImplemented)
-}
-
-func DaemonSubcommand(ctx context.Context) error {
+func execAdminSubcommand(ctx context.Context, config daemon.Config) error {
 	return trace.Wrap(ErrVnetNotImplemented)
 }
