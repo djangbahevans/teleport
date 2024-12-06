@@ -19,6 +19,7 @@ package vnet
 import (
 	"context"
 	"os/exec"
+	"strings"
 
 	"github.com/gravitational/trace"
 )
@@ -30,26 +31,26 @@ func configureOS(ctx context.Context, cfg *osConfig) error {
 	if cfg.tunIPv4 != "" {
 		log.InfoContext(ctx, "Setting IPv4 address for the TUN device.", "device", cfg.tunName, "address", cfg.tunIPv4)
 		// TODO(nklaassen) handle proper CIDR ranges
-		cmd := exec.CommandContext(ctx,
-			"netsh", "interface", "ip", "set", "address", cfg.tunName, "static", cfg.tunIPv4, "255.192.0.0", cfg.tunIPv4)
-		if err := cmd.Run(); err != nil {
-			return trace.Wrap(err, "running %v", cmd.Args)
+		if err := runCommand(ctx,
+			"netsh", "interface", "ip", "set", "address", cfg.tunName, "static", cfg.tunIPv4, "255.192.0.0", cfg.tunIPv4,
+		); err != nil {
+			return trace.Wrap(err)
 		}
 	}
 
 	if cfg.tunIPv6 != "" {
 		log.InfoContext(ctx, "Setting IPv6 address for the TUN device.", "device", cfg.tunName, "address", cfg.tunIPv6)
-		cmd := exec.CommandContext(ctx,
-			"netsh", "interface", "ipv6", "set", "address", cfg.tunName, cfg.tunIPv6)
-		if err := cmd.Run(); err != nil {
-			return trace.Wrap(err, "running %v", cmd.Args)
+		if err := runCommand(ctx,
+			"netsh", "interface", "ipv6", "set", "address", cfg.tunName, cfg.tunIPv6,
+		); err != nil {
+			return trace.Wrap(err)
 		}
 
 		log.InfoContext(ctx, "Setting an IPv6 route for the VNet.")
-		cmd = exec.CommandContext(ctx,
-			"netsh", "interface", "ipv6", "set", "route", cfg.tunIPv6+"/64", cfg.tunName, cfg.tunIPv6)
-		if err := cmd.Run(); err != nil {
-			return trace.Wrap(err, "running %v", cmd.Args)
+		if err := runCommand(ctx,
+			"netsh", "interface", "ipv6", "set", "route", cfg.tunIPv6+"/64", cfg.tunName, cfg.tunIPv6,
+		); err != nil {
+			return trace.Wrap(err)
 		}
 	}
 
@@ -68,4 +69,15 @@ func configureDNS(ctx context.Context, nameserver string, zones []string) error 
 func (c *osConfigurator) doWithDroppedRootPrivileges(ctx context.Context, fn func() error) (err error) {
 	// TODO(nklaassen): actually do with dropped privileges.
 	return trace.Wrap(fn())
+}
+
+func runCommand(ctx context.Context, path string, args ...string) error {
+	cmd := exec.CommandContext(ctx, path, args...)
+	if err := cmd.Run(); err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return trace.Wrap(err, "running %q stderr: %s", strings.Join(append([]string{path}, args...), " "), string(exitErr.Stderr))
+		}
+		return trace.Wrap(err)
+	}
+	return nil
 }
