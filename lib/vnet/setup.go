@@ -70,7 +70,10 @@ func SetupAndRun(ctx context.Context, config *SetupAndRunConfig) (*ProcessManage
 	if err != nil {
 		return nil, trace.Wrap(err, "creating TUN device")
 	}
-	fmt.Println("NIC created TUN", tunName)
+
+	pm.AddCriticalBackgroundTask("os configurator", func() error {
+		return osConfigurationLoop(ctx, tunName, ipv6Prefix.String(), dnsIPv6.String(), config.HomePath, daemon.ClientCred{})
+	})
 
 	// // Create the socket that's used to receive the TUN device from the admin process.
 	// socket, socketPath, err := createUnixSocket()
