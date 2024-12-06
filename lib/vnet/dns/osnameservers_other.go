@@ -38,5 +38,5 @@ func NewOSUpstreamNameserverSource() (*OSUpstreamNameserverSource, error) {
 }
 
 func (s *OSUpstreamNameserverSource) UpstreamNameservers(ctx context.Context) ([]string, error) {
-	return []string{"192.168.1.50"}, nil
+	return []string{"192.168.1.50:53"}, nil
 }

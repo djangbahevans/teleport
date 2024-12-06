@@ -33,7 +33,12 @@ func configureOS(ctx context.Context, cfg *osConfig) error {
 		log.InfoContext(ctx, "Setting IPv4 address for the TUN device.", "device", cfg.tunName, "address", cfg.tunIPv4)
 		// TODO(nklaassen) handle proper CIDR ranges
 		if err := runCommand(ctx,
-			"netsh", "interface", "ip", "set", "address", cfg.tunName, "static", cfg.tunIPv4, "255.192.0.0", cfg.tunIPv4,
+			"netsh", "interface", "ip", "set", "address", cfg.tunName, "static", cfg.tunIPv4,
+		); err != nil {
+			return trace.Wrap(err)
+		}
+		if err := runCommand(ctx,
+			"route", "add", "100.64.0.0", "mask", "255.192.0.0", cfg.tunIPv4,
 		); err != nil {
 			return trace.Wrap(err)
 		}
@@ -55,15 +60,22 @@ func configureOS(ctx context.Context, cfg *osConfig) error {
 		}
 	}
 
-	if err := configureDNS(ctx, cfg.dnsAddr, cfg.dnsZones); err != nil {
+	if err := configureDNS(ctx, cfg.tunName, cfg.dnsAddr); err != nil {
 		return trace.Wrap(err, "configuring DNS")
 	}
 
 	return nil
 }
 
-func configureDNS(ctx context.Context, nameserver string, zones []string) error {
-	// TODO(nklaassen): actually configure DNS.
+func configureDNS(ctx context.Context, tunName, nameserver string) error {
+	log.InfoContext(ctx, "Setting up DNS for the tun",
+		"tunName", tunName,
+		"addr", nameserver)
+	if err := runCommand(ctx,
+		"netsh", "interface", "ipv6", "set", "dns", "name="+tunName, "source=static", "addr="+nameserver, "validate=no",
+	); err != nil {
+		return trace.Wrap(err)
+	}
 	return nil
 }
 
@@ -73,6 +85,8 @@ func (c *osConfigurator) doWithDroppedRootPrivileges(ctx context.Context, fn fun
 }
 
 func runCommand(ctx context.Context, path string, args ...string) error {
+	cmdString := strings.Join(append([]string{path}, args...), " ")
+	log.InfoContext(ctx, "Running command", "cmd", cmdString)
 	cmd := exec.CommandContext(ctx, path, args...)
 	var output strings.Builder
 	cmd.Stderr = &output

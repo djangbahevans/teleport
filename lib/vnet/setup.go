@@ -329,12 +329,17 @@ func osConfigurationLoop(ctx context.Context, tunName, ipv6Prefix, dnsAddr, home
 	const osConfigurationInterval = 10 * time.Second
 	ticker := time.NewTicker(osConfigurationInterval)
 	defer ticker.Stop()
+	count := 0
 	for {
 		select {
 		case <-ticker.C:
+			if count > 2 {
+				continue
+			}
 			if err := osConfigurator.updateOSConfiguration(ctx); err != nil {
 				return trace.Wrap(err, "updating OS configuration")
 			}
+			count++
 		case <-ctx.Done():
 			return ctx.Err()
 		}
