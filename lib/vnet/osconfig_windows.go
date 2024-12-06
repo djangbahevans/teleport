@@ -18,6 +18,7 @@ package vnet
 
 import (
 	"context"
+	"log/slog"
 	"os/exec"
 	"strings"
 
@@ -73,11 +74,14 @@ func (c *osConfigurator) doWithDroppedRootPrivileges(ctx context.Context, fn fun
 
 func runCommand(ctx context.Context, path string, args ...string) error {
 	cmd := exec.CommandContext(ctx, path, args...)
+	var output strings.Builder
+	cmd.Stderr = &output
+	cmd.Stdout = &output
 	if err := cmd.Run(); err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			return trace.Wrap(err, "running %q stderr: %s", strings.Join(append([]string{path}, args...), " "), string(exitErr.Stderr))
-		}
-		return trace.Wrap(err)
+		slog.WarnContext(ctx, "Failed to run osconfig command",
+			"cmd", strings.Join(append([]string{path}, args...), " "),
+			"output", output.String())
+		//return trace.Wrap(err, `running "%s" output: %s`, strings.Join(append([]string{path}, args...), " "), output.String())
 	}
 	return nil
 }
