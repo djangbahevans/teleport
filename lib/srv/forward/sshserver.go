@@ -52,6 +52,7 @@ import (
 	"github.com/gravitational/teleport/lib/service/servicecfg"
 	"github.com/gravitational/teleport/lib/services"
 	"github.com/gravitational/teleport/lib/srv"
+	"github.com/gravitational/teleport/lib/srv/git"
 	"github.com/gravitational/teleport/lib/sshutils"
 	"github.com/gravitational/teleport/lib/sshutils/x11"
 	"github.com/gravitational/teleport/lib/teleagent"
@@ -79,6 +80,8 @@ import (
 //		return nil, trace.Wrap(err)
 //	}
 type Server struct {
+	component string
+
 	logger *slog.Logger
 
 	id string
@@ -256,6 +259,8 @@ type ServerConfig struct {
 	// IsAgentlessNode indicates whether the targetServer is a Node with an OpenSSH server (no teleport agent).
 	// This includes Nodes whose sub kind is OpenSSH and OpenSSHEphemeralKey.
 	IsAgentlessNode bool
+
+	component string
 }
 
 // CheckDefaults makes sure all required parameters are passed in.
@@ -309,6 +314,16 @@ func (s *ServerConfig) CheckDefaults() error {
 	if s.TracerProvider == nil {
 		s.TracerProvider = tracing.DefaultProvider()
 	}
+
+	if s.component == "" {
+		switch {
+		case s.TargetServer != nil && s.TargetServer.GetKind() == types.KindGitServer:
+			s.component = teleport.ComponentForwardingGit
+			s.Emitter = git.NewEmitter(s.Emitter)
+		default:
+			s.component = teleport.ComponentForwardingNode
+		}
+	}
 	return nil
 }
 
@@ -329,6 +344,7 @@ func New(c ServerConfig) (*Server, error) {
 	}
 
 	s := &Server{
+		component: c.component,
 		logger: slog.With(teleport.ComponentKey, teleport.ComponentForwardingNode,
 			"src_addr", c.SrcAddr.String(),
 			"dst_addr", c.DstAddr.String(),
@@ -374,7 +390,7 @@ func New(c ServerConfig) (*Server, error) {
 	// Common auth handlers.
 	authHandlerConfig := srv.AuthHandlerConfig{
 		Server:       s,
-		Component:    teleport.ComponentForwardingNode,
+		Component:    c.component,
 		Emitter:      c.Emitter,
 		AccessPoint:  c.TargetClusterAccessPoint,
 		TargetServer: c.TargetServer,
@@ -452,7 +468,7 @@ func (s *Server) AdvertiseAddr() string {
 
 // Component is the type of node this server is.
 func (s *Server) Component() string {
-	return teleport.ComponentForwardingNode
+	return s.component
 }
 
 // PermitUserEnvironment is always false because it's up to the remote host
@@ -505,6 +521,13 @@ func (s *Server) GetHostSudoers() srv.HostSudoers {
 
 // GetInfo returns a services.Server that represents this server.
 func (s *Server) GetInfo() types.Server {
+	spec := types.ServerSpecV2{
+		Addr: s.AdvertiseAddr(),
+	}
+	if s.targetServer != nil {
+		spec.Hostname = s.targetServer.GetHostname()
+		spec.GitHub = s.targetServer.GetGitHub()
+	}
 	return &types.ServerV2{
 		Kind:    types.KindNode,
 		Version: types.V2,
@@ -512,9 +535,7 @@ func (s *Server) GetInfo() types.Server {
 			Name:      s.ID(),
 			Namespace: s.GetNamespace(),
 		},
-		Spec: types.ServerSpecV2{
-			Addr: s.AdvertiseAddr(),
-		},
+		Spec: spec,
 	}
 }
 
@@ -593,6 +614,7 @@ func (s *Server) Serve() {
 
 	ctx := context.Background()
 	ctx, s.connectionContext = sshutils.NewConnectionContext(ctx, s.serverConn, s.sconn, sshutils.SetConnectionContextClock(s.clock))
+	systemLogin := sconn.User()
 
 	// Take connection and extract identity information for the user from it.
 	s.identityContext, err = s.authHandlers.CreateIdentityContext(sconn)
@@ -624,10 +646,34 @@ func (s *Server) Serve() {
 			s.agentlessSigner = sshSigner
 		}
 	}
+	if s.targetServer != nil && s.targetServer.GetGitHub() != nil {
+		s.agentlessSigner, err = git.MakeGitHubSigner(ctx, git.GitHubSignerConfig{
+			Server:                  s.targetServer,
+			GitHubUserID:            s.identityContext.GitHubUserID,
+			TeleportUser:            s.identityContext.TeleportUser,
+			IdentityExpires:         s.identityContext.CertValidBefore,
+			AuthPreferenceGetter:    s.GetAccessPoint(),
+			GitHubUserCertGenerator: s.authClient.IntegrationsClient(),
+			Clock:                   s.clock,
+		})
+		if err != nil {
+			s.rejectChannel(chans, fmt.Sprintf("Unable to make SSH signer for GitHub: %v", err.Error()))
+			sconn.Close()
+			s.logger.WarnContext(ctx, "Unable to make SSH signer for GitHub",
+				"user", s.identityContext.TeleportUser,
+				"hostname", s.targetServer.GetHostname(),
+				"error", err)
+			return
+		}
+
+		// `tsh git ssh` sends teleport.SSHGitPrincipal as user. Replace it with
+		// "git".
+		systemLogin = "git"
+	}
 
 	// Connect and authenticate to the remote node.
-	s.logger.DebugContext(s.Context(), "Creating remote connection", "user", sconn.User(), "client_addr", s.clientConn.RemoteAddr())
-	s.remoteClient, err = s.newRemoteClient(ctx, sconn.User(), netConfig)
+	s.logger.DebugContext(s.Context(), "Creating remote connection", "user", systemLogin, "client_addr", s.clientConn.RemoteAddr())
+	s.remoteClient, err = s.newRemoteClient(ctx, systemLogin, netConfig)
 	if err != nil {
 		// Reject the connection with an error so the client doesn't hang then
 		// close the connection.
