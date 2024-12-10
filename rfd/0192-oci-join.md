@@ -152,6 +152,14 @@ apiReq.Header = apiReqInfo.Header
 ```
 If Oracle accepts it, the node is allowed to join the cluster.
 
+#### Throttling
+
+If the auth server is ever
+[throttled by Oracle](https://docs.oracle.com/en-us/iaas/Content/API/Concepts/usingapi.htm#throttle),
+the TooManyRequests error will be propagated back to the node, which will try
+`RegisterUsingOracleMethod` again with the exponential backoff recommended by
+Oracle (maximum of 60 seconds).
+
 #### Limitations
 
 The Oracle provision tokens will not support nested compartments, i.e. if
