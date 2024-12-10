@@ -7,7 +7,7 @@ state: draft
 
 ## Required Approvers
 
-* Engineering: @nklassen && @strideynet
+* Engineering: @nklaassen && @strideynet
 
 ## What
 
@@ -30,8 +30,8 @@ a Teleport cluster and an Oracle Cloud compute instance.
 
 ### UX
 
-Suppose Alice is a system administrator with a Teleport cluster, as well as an
-Oracle Cloud compute instance that she would like to add to the cluster. She
+Suppose Alice is a system administrator with a Teleport cluster, and she wants
+to add some Oracle Cloud compute instances to it. She
 would first create the file `token.yaml` with the following contents:
 
 ```yaml
@@ -45,6 +45,7 @@ spec:
   oracle:
     allow:
       - tenancy: "ocid1.tenancy.oc1..<unique ID>"  # the OCID for Alice's tenancy
+        parent_compartments: "ocid1.compartment.oc1..<unique ID>" # the OCID for Alice's compartment
         # If needed, Alice can further restrict the compartments and regions
         # instances can join from.
 ```
@@ -55,14 +56,27 @@ She would then create the provision token:
 $ tctl create token.yaml
 ```
 
-Next, Alice would install Teleport on her instance, then configure it:
+Next, Alice would install, configure, and start Teleport on all of her instances.
+If Alice has not yet created her instances, she can set `user_data` in each
+instance's metadata to add an init script for
+(cloud-init)[https://docs.oracle.com/en-us/iaas/Content/Compute/Tasks/launchinginstance.htm#].
+Otherwise, she can run the following script locally to install Teleport on her
+existing instances:
 
 ```sh
-$ teleport node configure --token oci-token --join-method oracle --proxy example.com
+$ INSTANCE_IDS=$(oci compute instance list | jq -r '.data | map(.id) | join(" ")') # filter instances as needed
+$ for INSTANCE_ID in $(echo $INSTANCE_IDS)
+do
+  oci instance-agent command create \
+  --compartment-id <compartment-id> \
+  --content '{"source": {"sourceType": "TEXT", "text": "curl https://cdn.teleport.dev/install.sh | bash -s <Teleport version> && \
+  teleport node configure --token oci-token --join-method oracle --proxy example.com && \
+  sudo systemctl start teleport"}}' \
+  --target '{"instanceId": "$INSTANCE_ID"}'
+done
 ```
 
-Finally, Alice would start Teleport on the instance. She can confirm that the
-node has joined either in the web UI or by running `tsh ls`.
+She can confirm that the nodes have joined either in the web UI or by running `tsh ls`.
 
 ### Implementation
 
@@ -81,14 +95,13 @@ spec:
     allow:
         # OCID of the tenancy to allow instances to join from. Required.
       - tenancy: "ocid1.tenancy.oc1..<unique ID>"
-        # Compartments to allow instances to join from. Only the direct parent
+        # OCIDs of compartments to allow instances to join from. Only the direct parent
         # compartment applies; i.e. nested compartments are not taken into account.
-        # May be specified by name or by OCID. If compartments is empty or a wildcard,
+        # If compartments is empty,
         # instances can join from any compartment in the tenancy.
-        parent_compartments: ["my_compartment", "ocid1.compartment.oc1...<unique_ID>"]
+        parent_compartments: ["ocid1.compartment.oc1...<unique_ID>"]
         # Regions to allow instances to join from. Both full names ("us-phoenix-1")
-        # and abbreviations ("phx") are allowed. If regions is empty or
-        # a wildcard, instances can join from any region.
+        # and abbreviations ("phx") are allowed. If regions is empty, instances can join from any region.
         regions: ["phx", "us-ashburn-1"]
         # Add more entries as necessary.
       - tenancy: "..."
@@ -101,21 +114,22 @@ spec:
 
 When a node initiates the Oracle join method:
 
-- The node first fetches credentials for its
+- The node starts a `RegisterUsingOracleMethod` grpc request to the auth server.
+- The auth server generates a 32 byte challenge string and sends it to the node.
+- The node fetches credentials for its
 [instance principal](https://docs.oracle.com/en-us/iaas/Content/Identity/Tasks/callingservicesfrominstances.htm#concepts)
-via the Oracle instance metadata service.
+via the Oracle instance metadata service. Instances are guranteed to have a principal
+and always have access to the instance metadata service to fetch their credentials.
 - With those credentials, the node will create a
 [signed HTTP request](https://docs.oracle.com/en-us/iaas/Content/API/Concepts/signingrequests.htm)
 to the Oracle Cloud API to
-[fetch the compartment the instance is in](https://docs.oracle.com/en-us/iaas/api/#/en/identity/20160918/Compartment/GetCompartment),
-at `https://iaas.{region}.oraclecloud.com/{api version}/compartment/{compartment's OCID}`.
+[list all compartments](https://docs.oracle.com/en-us/iaas/api/#/en/identity/20160918/Compartment/ListCompartments),
+at `https://iaas.{region}.oraclecloud.com/{api version}/compartments`.
+The node will [include and sign](https://github.com/oracle/oci-go-sdk/blob/c696c320af82270e0a2fc5324600c4902b907ecc/example/example_identity_test.go#L51-L59)
+the challenge from the auth server under the header `x-teleport-challenge`.
 The instance's principal does not need any additional permissions to make this request.
-- The node will then make a `RegisterUsingToken` request to the auth server and
-sends the URL and headers of the signed request as parameters (the auth server
-will be able to recreate the rest of the request).
-
-When the auth server receives a `RegisterUsingToken` request for the Oracle join method:
-
+- The node sends the signed headers and the common token request parameters
+to the auth server.
 - The auth server extracts the key ID from the provided Authorization header. The key
 ID is a string that Oracle uses to identify the caller. For instance principals,
 the key ID is a JWT prefixed by the string `ST$` (unfortunately I could not
@@ -123,13 +137,20 @@ find docs that back this up, I found this experimentally).
 - The auth server decodes the JWT and maps the claims `opc-tenant`,
 `opc-compartment`, and `opc-instance` to the instance's tenancy ID, compartment
 ID, and instance ID respectively.
-- The auth server verifies that the compartment ID and region in the provided
-API URL match the compartment ID and region from the claims (the region can be
-extracted from the instance ID).
-- The auth server reconstructs and performs the API request; if Oracle accepts
-it, the auth server validates the tenancy ID, compartment ID (or name, found in
-the API response), and region against the Teleport provision token. If that
-passes, the node is allowed to join the cluster.
+- The auth server validates/verifies several properties:
+  - The tenancy ID, compartment ID, and instance ID are all valid Oracle OCIDs.
+  - The tenancy ID, compartment ID, and region match the Teleport provision token. 
+  - The signed challenge matches.
+- The auth server makes a HTTP request to ListCompartments, using the region from
+the JWT (found in the instance OCID) and the signed headers.
+```go
+apiReq, err := http.NewRequest(
+  http.MethodGet,
+  fmt.Sprintf("https://iaas.%s.oraclecloud.com/20160918", region /* sanitized */),
+  nil)
+apiReq.Header = apiReqInfo.Header
+```
+If Oracle accepts it, the node is allowed to join the cluster.
 
 #### Limitations
 
@@ -149,10 +170,10 @@ to ensure that they are
 [properly formed OCIDs](https://docs.oracle.com/en-us/iaas/Content/General/Concepts/identifiers.htm),
 including verifying that the region in the instance OCID is valid.
 
-To mitigate replay attacks, Teleport will verify that the JWT is not expired
+On top of the signed challenge, Teleport will verify that the JWT is not expired
 and was not issued in the future (with a leeway of 2 minutes, the same as the
-other JWT-based join methods). The Oracle API will also verify that the Date
-header in the signed request is
+other JWT-based join methods) to mitigate replay attacks. The Oracle API will
+also verify that the Date header in the signed request is
 [within 5 minutes](https://docs.oracle.com/en-us/iaas/Content/API/Concepts/usingapi.htm#clock)
 of its own clock.
 
@@ -163,18 +184,23 @@ it can trust the signature.
 
 ### Proto Specification
 
-Extend `RegisterUsingTokenRequest` to accept parameters needed for the signed API request:
+Add `RegisterUsingOracleMethod` rpc to the join service:
 
 ```proto
-message RegisterUsingTokenRequest {
-    // Existing fields...
-
-    OracleParams OracleParams = 15;
+message RegisterUsingOracleMethodRequest { 
+  types.RegisterUsingTokenRequest register_using_token_request = 1;
+  string url = 2;
+  map<string,string> headers = 3;
 }
 
-message OracleParams {
-  string URL = 1;
-  map<string, string> Headers = 2;
+message RegisterUsingOracleMethodResponse {
+  string challenge = 1;
+  Certs certs = 2;
+}
+
+service JoinService {
+  // ...
+  rpc RegisterUsingOracleMethod(stream RegisterUsingOracleMethodRequest) returns (stream RegisterUsingOracleMethodResponse);
 }
 ```
 
@@ -223,7 +249,7 @@ described in the docs, just like the other join methods.
 
 Cluster admins with many Oracle Cloud compartments may wish to specify the
 allowed compartments to join from by their tags, rather than having to
-specify each by name/OCID. The `oracle` section of the provision token
+specify each by OCID. The `oracle` section of the provision token
 spec could be expended with the `compartment_tags` field to allow filtering
 by defined and/or freeform tags. Since Teleport would already fetch the compartment
 from the Oracle API, no extra permissions would be required.
