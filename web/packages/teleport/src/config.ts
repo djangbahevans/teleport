@@ -198,6 +198,7 @@ const cfg = {
     headlessSso: `/web/headless/:requestId`,
     integrations: '/web/integrations',
     integrationStatus: '/web/integrations/status/:type/:name',
+    integrationTasks: '/web/integrations/status/:type/:name/tasks',
     integrationStatusResources:
       '/web/integrations/status/:type/:name/resources/:resourceKind',
     integrationEnroll: '/web/integrations/new/:type?',
