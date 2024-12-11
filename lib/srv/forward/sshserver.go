@@ -315,14 +315,12 @@ func (s *ServerConfig) CheckDefaults() error {
 		s.TracerProvider = tracing.DefaultProvider()
 	}
 
-	if s.component == "" {
-		switch {
-		case s.TargetServer != nil && s.TargetServer.GetKind() == types.KindGitServer:
-			s.component = teleport.ComponentForwardingGit
-			s.Emitter = git.NewEmitter(s.Emitter)
-		default:
-			s.component = teleport.ComponentForwardingNode
-		}
+	switch {
+	case s.TargetServer != nil && s.TargetServer.GetKind() == types.KindGitServer:
+		s.component = teleport.ComponentForwardingGit
+		s.Emitter = git.NewEmitter(s.Emitter)
+	default:
+		s.component = teleport.ComponentForwardingNode
 	}
 	return nil
 }
@@ -345,7 +343,7 @@ func New(c ServerConfig) (*Server, error) {
 
 	s := &Server{
 		component: c.component,
-		logger: slog.With(teleport.ComponentKey, teleport.ComponentForwardingNode,
+		logger: slog.With(teleport.ComponentKey, c.component,
 			"src_addr", c.SrcAddr.String(),
 			"dst_addr", c.DstAddr.String(),
 		),
@@ -519,14 +517,10 @@ func (s *Server) GetHostSudoers() srv.HostSudoers {
 	return &srv.HostSudoersNotImplemented{}
 }
 
-// GetInfo returns a services.Server that represents this server.
+// GetInfo returns a types.Server that represents this server.
 func (s *Server) GetInfo() types.Server {
-	spec := types.ServerSpecV2{
-		Addr: s.AdvertiseAddr(),
-	}
-	if s.targetServer != nil {
-		spec.Hostname = s.targetServer.GetHostname()
-		spec.GitHub = s.targetServer.GetGitHub()
+	if s.component == teleport.ComponentForwardingGit && s.targetServer != nil {
+		return s.targetServer
 	}
 	return &types.ServerV2{
 		Kind:    types.KindNode,
@@ -535,7 +529,9 @@ func (s *Server) GetInfo() types.Server {
 			Name:      s.ID(),
 			Namespace: s.GetNamespace(),
 		},
-		Spec: spec,
+		Spec: types.ServerSpecV2{
+			Addr: s.AdvertiseAddr(),
+		},
 	}
 }
 

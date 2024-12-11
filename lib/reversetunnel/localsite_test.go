@@ -471,6 +471,7 @@ func Test_shouldDialAndForward(t *testing.T) {
 		},
 		nil,
 	)
+	require.NoError(t, err)
 	openSSHNode, err := types.NewNode(
 		"openssh",
 		types.SubKindOpenSSHNode,
