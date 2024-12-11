@@ -16,42 +16,67 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-import React from 'react';
+import React, {useEffect} from 'react';
 import Table from 'design/DataTable';
 
-import { useParams } from 'react-router';
+import {useAsync} from "shared/hooks/useAsync";
+
+import {useParams} from "react-router";
+
+import {Indicator} from "design";
+
+import {Danger} from "design/Alert";
 
 import { FeatureBox } from 'teleport/components/Layout';
 import { AwsOidcHeader } from 'teleport/Integrations/status/AwsOidc/AwsOidcHeader';
-import { AwsResource } from 'teleport/Integrations/status/AwsOidc/StatCard';
 import { useAwsOidcStatus } from 'teleport/Integrations/status/AwsOidc/useAwsOidcStatus';
-import { IntegrationKind } from 'teleport/services/integrations';
+import {IntegrationKind, integrationService, UserTask} from "teleport/services/integrations";
+
 
 export function Tasks() {
+    const { name } = useParams<{
+        type: IntegrationKind;
+        name: string;
+    }>();
+
   const { integrationAttempt } = useAwsOidcStatus();
   const { data: integration } = integrationAttempt;
 
+    const [attempt, fetchTasks] = useAsync(() =>
+        integrationService.fetchIntegrationUserTasksList(name)
+    );
+
+    useEffect(() => {
+        fetchTasks();
+    }, []);
+
+    if (attempt.status == 'processing') {
+        return <Indicator />;
+    }
+
+    if (attempt.status == 'error') {
+        return <Danger>{attempt.statusText}</Danger>;
+    }
+
+    if (!attempt.data) {
+        return null;
+    }
+
   return (
     <FeatureBox css={{ maxWidth: '1400px', paddingTop: '16px', gap: '30px' }}>
-      {integration && (
-        <AwsOidcHeader integration={integration} tasks={true} />
-      )}
-      <Table
-        data={[]}
+      {integration && <AwsOidcHeader integration={integration} tasks={true} />}
+      {/*  todo (michellescripts) sync with Marco on timestamp field */}
+      <Table<UserTask>
+        data={attempt.data.items}
         columns={[
           {
-            key: 'type',
+            key: 'taskType',
             headerText: 'Type',
             isSortable: true,
           },
           {
-            key: 'details',
+            key: 'name',
             headerText: 'Issue Details',
-            isSortable: true,
-          },
-          {
-            key: 'timestamp',
-            headerText: 'Timestamp',
             isSortable: true,
           },
         ]}
