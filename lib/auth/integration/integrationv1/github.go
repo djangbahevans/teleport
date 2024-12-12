@@ -29,10 +29,15 @@ import (
 	integrationpb "github.com/gravitational/teleport/api/gen/proto/go/teleport/integration/v1"
 	"github.com/gravitational/teleport/api/types"
 	"github.com/gravitational/teleport/lib/authz"
+	"github.com/gravitational/teleport/lib/modules"
 )
 
 // GenerateGitHubUserCert signs a SSH certificate for GitHub integration.
 func (s *Service) GenerateGitHubUserCert(ctx context.Context, in *integrationpb.GenerateGitHubUserCertRequest) (*integrationpb.GenerateGitHubUserCertResponse, error) {
+	if modules.GetModules().BuildType() != modules.BuildEnterprise {
+		return nil, trace.BadParameter("the GitHub integration requires a Teleport Enterprise")
+	}
+
 	authCtx, err := s.authorizer.Authorize(ctx)
 	if err != nil {
 		return nil, trace.Wrap(err)

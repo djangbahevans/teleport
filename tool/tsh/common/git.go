@@ -46,13 +46,6 @@ func newGitCommands(app *kingpin.Application) gitCommands {
 		config: newGitConfigCommand(git),
 		clone:  newGitCloneCommand(git),
 	}
-
-	// TODO(greedy52) hide the commands until all basic features are implemented.
-	git.Hidden()
-	cmds.login.Hidden()
-	cmds.list.Hidden()
-	cmds.config.Hidden()
-	cmds.clone.Hidden()
 	return cmds
 }
 

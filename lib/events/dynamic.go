@@ -475,6 +475,9 @@ func FromEventFields(fields EventFields) (events.AuditEvent, error) {
 	case WorkloadIdentityDeleteEvent:
 		e = &events.WorkloadIdentityDelete{}
 
+	case GitCommandEvent:
+		e = &events.GitCommand{}
+
 	default:
 		slog.ErrorContext(context.Background(), "Attempted to convert dynamic event of unknown type into protobuf event.", "event_type", eventType)
 		unknown := &events.Unknown{}

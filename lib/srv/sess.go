@@ -1484,6 +1484,7 @@ func newRecorder(s *session, ctx *ServerContext) (events.SessionPreparerRecorder
 	// Don't record Git commands through Git proxy servers. Dedicated Git
 	// command events will be emitted.
 	if s.registry.Srv.Component() == teleport.ComponentForwardingGit {
+		s.logger.DebugContext(s.serverCtx, "Session recording disabled for git proxy.")
 		return events.WithNoOpPreparer(events.NewDiscardRecorder()), nil
 	}
 

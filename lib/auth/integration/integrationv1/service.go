@@ -36,6 +36,7 @@ import (
 	"github.com/gravitational/teleport/lib/authz"
 	"github.com/gravitational/teleport/lib/cryptosuites"
 	"github.com/gravitational/teleport/lib/events"
+	"github.com/gravitational/teleport/lib/modules"
 	"github.com/gravitational/teleport/lib/services"
 )
 
@@ -223,7 +224,11 @@ func (s *Service) CreateIntegration(ctx context.Context, req *integrationpb.Crea
 
 	switch req.Integration.GetSubKind() {
 	case types.IntegrationSubKindGitHub:
-		// TODO(greedy52) add entitlement check
+		// GitHub SSH certificate authorities support is a GitHub enterprise feature.
+		if modules.GetModules().BuildType() != modules.BuildEnterprise {
+			return nil, trace.BadParameter("the GitHub integration requires a Teleport Enterprise")
+		}
+
 		if err := s.createGitHubCredentials(ctx, req.Integration); err != nil {
 			return nil, trace.Wrap(err)
 		}

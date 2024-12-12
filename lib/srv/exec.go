@@ -103,14 +103,7 @@ func NewExecRequest(ctx *ServerContext, command string) (Exec, error) {
 		}, nil
 	}
 	if ctx.srv.Component() == teleport.ComponentForwardingGit {
-		if err := git.CheckSSHCommand(ctx.srv.GetInfo(), command); err != nil {
-			return nil, trace.Wrap(err)
-		}
-		return &remoteExec{
-			ctx:     ctx,
-			command: command,
-			session: ctx.RemoteSession,
-		}, nil
+		return newRemoteGitExec(ctx, command)
 	}
 
 	// If this is a registered OpenSSH node or proxy recoding mode is
@@ -129,6 +122,56 @@ func NewExecRequest(ctx *ServerContext, command string) (Exec, error) {
 	return &localExec{
 		Ctx:     ctx,
 		Command: command,
+	}, nil
+}
+
+func newRemoteGitExec(ctx *ServerContext, command string) (Exec, error) {
+	if err := git.CheckSSHCommand(ctx.srv.GetInfo(), command); err != nil {
+		return nil, trace.Wrap(err)
+	}
+
+	recorder, err := git.NewCommandRecorder(command)
+	if err != nil {
+		return nil, trace.Wrap(err)
+	}
+	return &remoteExec{
+		ctx:           ctx,
+		command:       command,
+		session:       ctx.RemoteSession,
+		inputObserver: recorder,
+		emitExecAuditEvent: func(ctx *ServerContext, cmd string, execErr error) {
+			code := events.GitCommandCode
+			commandMeta := apievents.CommandMetadata{
+				Command:  cmd,
+				ExitCode: strconv.Itoa(exitCode(execErr)),
+			}
+			if execErr != nil {
+				code = events.GitCommandFailureCode
+				commandMeta.Error = execErr.Error()
+			}
+
+			event := &apievents.GitCommand{
+				Metadata: apievents.Metadata{
+					Type:        events.GitCommandEvent,
+					Code:        code,
+					ClusterName: ctx.ClusterName,
+				},
+				UserMetadata: ctx.Identity.GetUserMetadata(),
+				ConnectionMetadata: apievents.ConnectionMetadata{
+					RemoteAddr: ctx.ServerConn.RemoteAddr().String(),
+					LocalAddr:  ctx.ServerConn.LocalAddr().String(),
+				},
+				SessionMetadata: ctx.GetSessionMetadata(),
+				ServerMetadata:  ctx.GetServer().TargetMetadata(),
+				CommandMetadata: commandMeta,
+				Service:         recorder.GetService(),
+				Path:            recorder.GetPath(),
+				Actions:         recorder.GetActions(),
+			}
+			if err := ctx.session.emitAuditEvent(ctx.srv.Context(), event); err != nil {
+				log.WithError(err).Warn("Failed to emit exec event.")
+			}
+		},
 	}, nil
 }
 
@@ -350,6 +393,9 @@ type remoteExec struct {
 	command string
 	session *tracessh.Session
 	ctx     *ServerContext
+
+	emitExecAuditEvent func(ctx *ServerContext, cmd string, execErr error)
+	inputObserver      io.WriteCloser
 }
 
 // String describes this remote exec value
@@ -387,9 +433,14 @@ func (e *remoteExec) Start(ctx context.Context, ch ssh.Channel) (*ExecResult, er
 	// hook up stdout/err the channel so the user can interact with the command
 	e.session.Stdout = ch
 	e.session.Stderr = ch.Stderr()
-	inputWriter, err := e.session.StdinPipe()
+	inputWriterCloser, err := e.session.StdinPipe()
 	if err != nil {
 		return nil, trace.Wrap(err)
+	}
+
+	inputWriter := io.Writer(inputWriterCloser)
+	if e.inputObserver != nil {
+		inputWriter = io.MultiWriter(inputWriter, e.inputObserver)
 	}
 
 	go func() {
@@ -397,7 +448,10 @@ func (e *remoteExec) Start(ctx context.Context, ch ssh.Channel) (*ExecResult, er
 		if _, err := io.Copy(inputWriter, ch); err != nil {
 			e.ctx.Warnf("Failed copying data from SSH channel to remote command stdin: %v", err)
 		}
-		inputWriter.Close()
+		inputWriterCloser.Close()
+		if e.inputObserver != nil {
+			e.inputObserver.Close()
+		}
 	}()
 
 	err = e.session.Start(ctx, e.command)
@@ -421,7 +475,11 @@ func (e *remoteExec) Wait() *ExecResult {
 	// Emit the result of execution to the Audit Log.
 	// TODO(greedy52) implement Git command auditor to replace the regular
 	// event.
-	emitExecAuditEvent(e.ctx, e.command, err)
+	if e.emitExecAuditEvent != nil {
+		e.emitExecAuditEvent(e.ctx, e.command, err)
+	} else {
+		emitExecAuditEvent(e.ctx, e.command, err)
+	}
 
 	return &ExecResult{
 		Command: e.GetCommand(),
