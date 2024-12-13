@@ -28,7 +28,7 @@ import (
 	"strings"
 	"time"
 	"unicode"
-	
+
 	"github.com/gravitational/trace"
 	"github.com/jonboulle/clockwork"
 	"github.com/spiffe/go-spiffe/v2/spiffeid"
@@ -310,8 +310,8 @@ func (s *IssuanceService) IssueWorkloadIdentity(
 		SpiffeId: spiffeID.String(),
 		Hint:     hint,
 
-		Expiry: timestamppb.New(notAfter),
-		Ttl:    durationpb.New(ttl),
+		ExpiresAt: timestamppb.New(notAfter),
+		Ttl:       durationpb.New(ttl),
 	}
 
 	switch v := req.GetCredential().(type) {

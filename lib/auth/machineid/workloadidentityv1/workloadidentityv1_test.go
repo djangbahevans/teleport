@@ -242,7 +242,7 @@ func TestIssueWorkloadIdentity(t *testing.T) {
 					),
 				))
 				// Check expiry makes sense
-				require.WithinDuration(t, time.Now().Add(wantTTL), cred.GetExpiry().AsTime(), time.Second)
+				require.WithinDuration(t, time.Now().Add(wantTTL), cred.GetExpiresAt().AsTime(), time.Second)
 
 				// Check the JWT
 				parsed, err := jwt.ParseSigned(cred.GetJwtSvid().GetJwt())
@@ -332,7 +332,7 @@ func TestIssueWorkloadIdentity(t *testing.T) {
 					),
 				))
 				// Check expiry makes sense
-				require.WithinDuration(t, time.Now().Add(wantTTL), cred.GetExpiry().AsTime(), time.Second)
+				require.WithinDuration(t, time.Now().Add(wantTTL), cred.GetExpiresAt().AsTime(), time.Second)
 
 				// Check the X509
 				cert, err := x509.ParseCertificate(cred.GetX509Svid().GetCert())
