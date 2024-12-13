@@ -657,7 +657,7 @@ function optionsToModel(options: RoleOptions): {
     forward_agent,
     idp,
     pin_source_ip,
-    port_forwarding,
+    ssh_port_forwarding,
     record_session,
     ssh_file_copy,
 
@@ -697,7 +697,7 @@ function optionsToModel(options: RoleOptions): {
       forward_agent !== defaultOpts.forward_agent ||
       !equalsDeep(idp, defaultOpts.idp) ||
       pin_source_ip !== defaultOpts.pin_source_ip ||
-      port_forwarding !== defaultOpts.port_forwarding ||
+      !equalsDeep(ssh_port_forwarding, defaultOpts.ssh_port_forwarding) ||
       !equalsDeep(record_session, defaultOpts.record_session) ||
       ssh_file_copy !== defaultOpts.ssh_file_copy ||
       requireMFATypeOption === undefined ||

@@ -92,7 +92,14 @@ export const defaultOptions = (): RoleOptions => ({
   },
   max_session_ttl: '30h0m0s',
   pin_source_ip: false,
-  port_forwarding: true,
+  ssh_port_forwarding: {
+    local: {
+      enabled: false,
+    },
+    remote: {
+      enabled: false,
+    },
+  },
   record_session: {
     default: 'best_effort',
     desktop: true,
