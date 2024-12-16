@@ -5204,12 +5204,12 @@ func encodeTextResponse(responseBody string, r *http.Request) ([]byte, string, e
 		}
 	}
 
-	// Ignore duplicate MIME types
-	mimeTypes = slices.Compact(mimeTypes)
-
 	// Add a default value in the event that either no value is sent, or no supported value is sent
 	// This must always be a plain text response to preserve backwards compatibility
 	mimeTypes = append(mimeTypes, "text/plain")
+
+	// Ignore duplicate MIME types
+	mimeTypes = slices.Compact(mimeTypes)
 
 	for _, mimeType := range mimeTypes {
 		switch mimeType {
