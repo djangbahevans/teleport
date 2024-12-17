@@ -143,10 +143,12 @@ and [response](https://docs.oracle.com/en-us/iaas/api/#/en/identity-dp/v1/dataty
 types are).
 The node will [include and sign](https://github.com/oracle/oci-go-sdk/blob/c696c320af82270e0a2fc5324600c4902b907ecc/example/example_identity_test.go#L51-L59)
 the challenge from the auth server under the header `x-teleport-challenge`.
-- The node sends the signed headers, its region, and the common token request parameters
+- The node sends the signed headers and the common token request parameters
 to the auth server.
-- The auth server forwards the request to the Oracle API and verifies that the
-request succeeds.
+- The auth server extracts the instance's region from the signed headers to
+reconstruct the `authenticateClient` URL (found in the `keyID` field of the
+`Authorization` header, formatted as a JWT) and forwards the request to the
+Oracle API and verifies that the request succeeds.
 - The auth server maps the claims `opc-tenant`, `opc-compartment`, and `opc-instance`
 from the authenticateClient response to the instance's tenancy ID, compartment
 ID, and instance ID respectively.
@@ -192,8 +194,7 @@ Add `RegisterUsingOracleMethod` rpc to the join service:
 ```proto
 message RegisterUsingOracleMethodRequest { 
   types.RegisterUsingTokenRequest register_using_token_request = 1;
-  string region = 2;
-  map<string,string> headers = 3;
+  map<string,string> headers = 2;
 }
 
 message RegisterUsingOracleMethodResponse {
@@ -257,7 +258,7 @@ spec could be expended with the `compartment_tags` field to allow filtering
 by defined and/or freeform tags. Since Teleport would already fetch the compartment
 from the Oracle API, no extra permissions would be required.
 
-## Appendix A: Sample JWT claims
+## Appendix A: Sample keyID JWT claims
 
 ```json
 {
