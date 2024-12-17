@@ -5153,9 +5153,10 @@ func SSOSetWebSessionAndRedirectURL(w http.ResponseWriter, r *http.Request, resp
 func (h *Handler) authExportPublic(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
 	err := rateLimitRequest(r, h.limiter)
 	if err != nil {
-		http.Error(w, err.Error(), trace.ErrorToCode(err))
+		h.serveErrorResponse(err, w, r)
 		return
 	}
+
 	authorities, err := client.ExportAuthorities(
 		r.Context(),
 		h.GetProxyClient(),
