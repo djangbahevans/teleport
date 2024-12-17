@@ -110,6 +110,17 @@ spec:
         # ...
 ```
 
+#### Permissions
+
+Before the join process can begin, the nodes joining need permission to authenticate clients.
+
+- Create a [dynamic group](https://docs.oracle.com/en-us/iaas/Content/Identity/Tasks/managingdynamicgroups.htm)
+that matches all the instances that will join Teleport.
+- Create the following policy: `Allow dynamic-group <dynamic-group-name> to inspect authentication in tenancy`
+
+As long as the criteria for which instances can join doesn't change, the group
+and policy do not need to be updated for each new instance.
+
 #### Join process
 
 When a node initiates the Oracle join method:
@@ -120,37 +131,30 @@ When a node initiates the Oracle join method:
 [instance principal](https://docs.oracle.com/en-us/iaas/Content/Identity/Tasks/callingservicesfrominstances.htm#concepts)
 via the Oracle instance metadata service. Instances are guranteed to have a principal
 and always have access to the instance metadata service to fetch their credentials.
-- With those credentials, the node will create a
-[signed HTTP request](https://docs.oracle.com/en-us/iaas/Content/API/Concepts/signingrequests.htm)
-to the Oracle Cloud API to
-[list all compartments](https://docs.oracle.com/en-us/iaas/api/#/en/identity/20160918/Compartment/ListCompartments),
-at `https://iaas.{region}.oraclecloud.com/{api version}/compartments`.
+- The node will create a [signed HTTP request](https://docs.oracle.com/en-us/iaas/Content/API/Concepts/signingrequests.htm)
+to `http://127.0.0.1`. The address doesn't matter as the node will only use the
+signed headers and never make the request.
+- The node will create a second signed request, this time to
+`https://auth.{region}.oraclecloud.com/v1/authentication/authenticateClient`,
+and include the signed headers from the preivous request as the payload (the
+authenticateClient route is not documented in the Oracle docs, but the
+[request](https://docs.oracle.com/en-us/iaas/api/#/en/identity-dp/v1/datatypes/AuthenticateClientDetails)
+and [response](https://docs.oracle.com/en-us/iaas/api/#/en/identity-dp/v1/datatypes/AuthenticateClientResult)
+types are).
 The node will [include and sign](https://github.com/oracle/oci-go-sdk/blob/c696c320af82270e0a2fc5324600c4902b907ecc/example/example_identity_test.go#L51-L59)
 the challenge from the auth server under the header `x-teleport-challenge`.
-The instance's principal does not need any additional permissions to make this request.
-- The node sends the signed headers and the common token request parameters
+- The node sends the signed headers, its region, and the common token request parameters
 to the auth server.
-- The auth server extracts the key ID from the provided Authorization header. The key
-ID is a string that Oracle uses to identify the caller. For instance principals,
-the key ID is a JWT prefixed by the string `ST$` (unfortunately I could not
-find docs that back this up, I found this experimentally).
-- The auth server decodes the JWT and maps the claims `opc-tenant`,
-`opc-compartment`, and `opc-instance` to the instance's tenancy ID, compartment
+- The auth server forwards the request to the Oracle API and verifies that the
+request succeeds.
+- The auth server maps the claims `opc-tenant`, `opc-compartment`, and `opc-instance`
+from the authenticateClient response to the instance's tenancy ID, compartment
 ID, and instance ID respectively.
 - The auth server validates/verifies several properties:
   - The tenancy ID, compartment ID, and instance ID are all valid Oracle OCIDs.
   - The tenancy ID, compartment ID, and region match the Teleport provision token. 
   - The signed challenge matches.
-- The auth server makes a HTTP request to ListCompartments, using the region from
-the JWT (found in the instance OCID) and the signed headers.
-```go
-apiReq, err := http.NewRequest(
-  http.MethodGet,
-  fmt.Sprintf("https://iaas.%s.oraclecloud.com/20160918", region /* sanitized */),
-  nil)
-apiReq.Header = apiReqInfo.Header
-```
-If Oracle accepts it, the node is allowed to join the cluster.
+- If everything above succeeds, the node is allowed to join the cluster.
 
 #### Throttling
 
@@ -173,22 +177,13 @@ joining node to get signed requests for each compartment.
 
 ### Security
 
-To mitigate SSRF, Teleport will sanitize the claims in the key ID JWT provided by the instance
-to ensure that they are
-[properly formed OCIDs](https://docs.oracle.com/en-us/iaas/Content/General/Concepts/identifiers.htm),
-including verifying that the region in the instance OCID is valid.
+To mitigate SSRF, Teleport will verify that the region provided by the joining
+node is valid.
 
-On top of the signed challenge, Teleport will verify that the JWT is not expired
-and was not issued in the future (with a leeway of 2 minutes, the same as the
-other JWT-based join methods) to mitigate replay attacks. The Oracle API will
-also verify that the Date header in the signed request is
+On top of the signed challenge, both Teleport and the Oracle API will
+verify that the `X-Date` header in the signed request is
 [within 5 minutes](https://docs.oracle.com/en-us/iaas/Content/API/Concepts/usingapi.htm#clock)
-of its own clock.
-
-Teleport will not verify signature of the JWT. This is because the needed JWKs will always be behind a
-[non-public API](https://docs.oracle.com/en-us/iaas/Content/APIGateway/Tasks/apigatewayusingjwttokens.htm#identityprovider).
-Instead, Teleport will trust the response from the Oracle Cloud API to know if
-it can trust the signature.
+of their own clocks.
 
 ### Proto Specification
 
@@ -197,7 +192,7 @@ Add `RegisterUsingOracleMethod` rpc to the join service:
 ```proto
 message RegisterUsingOracleMethodRequest { 
   types.RegisterUsingTokenRequest register_using_token_request = 1;
-  string url = 2;
+  string region = 2;
   map<string,string> headers = 3;
 }
 
