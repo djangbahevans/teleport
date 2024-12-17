@@ -11376,8 +11376,8 @@ func Test_encodeTextResponse(t *testing.T) {
 	for _, testCase := range testCases {
 		// Setup
 		req, err := http.NewRequest("", "", nil)
-		req.Header["Accept"] = testCase.acceptHeader
 		require.NoError(t, err)
+		req.Header["Accept"] = testCase.acceptHeader
 
 		// Test
 		responseBodyBytes, contentType, err := encodeTextResponse(testCase.providedBody, req)
@@ -11519,8 +11519,8 @@ func Test_serveTextResponse(t *testing.T) {
 	for _, testCase := range testCases {
 		// Setup
 		req, err := http.NewRequest("", "", nil)
-		req.Header["Accept"] = testCase.acceptHeader
 		require.NoError(t, err)
+		req.Header["Accept"] = testCase.acceptHeader
 
 		respWriter := httptest.NewRecorder()
 		respWriter.Code = 0

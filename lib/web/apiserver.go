@@ -73,6 +73,7 @@ import (
 	"github.com/gravitational/teleport/api/types"
 	apievents "github.com/gravitational/teleport/api/types/events"
 	"github.com/gravitational/teleport/api/types/installers"
+	apiutils "github.com/gravitational/teleport/api/utils"
 	"github.com/gravitational/teleport/api/utils/keys"
 	apisshutils "github.com/gravitational/teleport/api/utils/sshutils"
 	"github.com/gravitational/teleport/entitlements"
@@ -5204,17 +5205,14 @@ func encodeTextResponse(responseBody string, r *http.Request) ([]byte, string, e
 		}
 	}
 
-	// Add a default value in the event that either no value is sent, or no supported value is sent
-	// This must always be a plain text response to preserve backwards compatibility
-	mimeTypes = append(mimeTypes, "text/plain")
+	// Ignore duplicate MIME types while preserving order
+	mimeTypes = apiutils.Deduplicate(mimeTypes)
 
-	// Ignore duplicate MIME types
-	mimeTypes = slices.Compact(mimeTypes)
-
+mimeTypeSelection:
 	for _, mimeType := range mimeTypes {
 		switch mimeType {
+		// New mime types should be added here
 		case "application/json":
-			var responseContent []byte
 			responseContent, err := json.Marshal(responseBody)
 			if err != nil {
 				trackedErr = trace.Wrap(err, "failed to marshal JSON response")
@@ -5222,14 +5220,14 @@ func encodeTextResponse(responseBody string, r *http.Request) ([]byte, string, e
 			}
 
 			return responseContent, "application/json", trackedErr
-		// Default to text/plain
 		case "text/plain":
-			return []byte(responseBody), "text/plain; charset=utf-8", trackedErr
+			break mimeTypeSelection
 		}
 	}
 
-	// This will never be hit but the Golang compiler isn't smart enough to realize this will never be hit
-	return nil, "", trace.Errorf("failed to match MIME type (Teleport bug - this should never be hit)")
+	// Handle "text/plain", and default to it.
+	// This must always be a plain text response to preserve backwards compatibility
+	return []byte(responseBody), "text/plain; charset=utf-8", trackedErr
 }
 
 // This must always succeed in sending _some_ response.
