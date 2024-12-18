@@ -16,18 +16,25 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-import 'whatwg-fetch';
-import auth, { MfaChallengeScope } from 'teleport/services/auth/auth';
 import websession from 'teleport/services/websession';
+import 'whatwg-fetch';
 
-import { storageService } from '../storageService';
+import { MfaContextValue } from 'teleport/MFAContext/MFAContext';
+
 import { MfaChallengeResponse } from '../mfa';
+import { storageService } from '../storageService';
 
 import parseError, { ApiError } from './parseError';
 
 export const MFA_HEADER = 'Teleport-Mfa-Response';
 
+let mfaContext: MfaContextValue;
+
 const api = {
+  setMfaContext(mfa: MfaContextValue) {
+    mfaContext = mfa;
+  },
+
   get(
     url: string,
     abortSignal?: AbortSignal,
@@ -189,10 +196,7 @@ const api = {
 
     let mfaResponseForRetry;
     try {
-      const challenge = await auth.getMfaChallenge({
-        scope: MfaChallengeScope.ADMIN_ACTION,
-      });
-      mfaResponseForRetry = await auth.getMfaChallengeResponse(challenge);
+      mfaResponseForRetry = await mfaContext.getAdminActionMfaResponse();
     } catch {
       throw new Error(
         'Failed to fetch MFA challenge. Please connect a registered hardware key and try again. If you do not have a hardware key registered, you can add one from your account settings page.'
