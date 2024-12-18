@@ -16,13 +16,14 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-import api from 'teleport/services/api';
 import cfg from 'teleport/config';
+import api from 'teleport/services/api';
 
 import { makeLabelMapOfStrArrs } from '../agents/make';
+import { MfaChallengeResponse } from '../mfa';
 
 import makeJoinToken from './makeJoinToken';
-import { JoinToken, JoinRule, JoinTokenRequest } from './types';
+import { JoinRule, JoinToken, JoinTokenRequest } from './types';
 
 const TeleportTokenNameHeader = 'X-Teleport-TokenName';
 
@@ -70,8 +71,11 @@ class JoinTokenService {
     return api.post(cfg.getJoinTokensUrl(), req).then(makeJoinToken);
   }
 
-  fetchJoinTokens(signal: AbortSignal = null): Promise<{ items: JoinToken[] }> {
-    return api.get(cfg.getJoinTokensUrl(), signal).then(resp => {
+  fetchJoinTokens(
+    signal: AbortSignal = null,
+    mfaResponse?: MfaChallengeResponse
+  ): Promise<{ items: JoinToken[] }> {
+    return api.get(cfg.getJoinTokensUrl(), signal, mfaResponse).then(resp => {
       return {
         items: resp.items?.map(makeJoinToken) || [],
       };
