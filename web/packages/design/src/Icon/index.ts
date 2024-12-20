@@ -149,6 +149,7 @@ export { MagnifyingMinus } from './Icons/MagnifyingMinus';
 export { MagnifyingPlus } from './Icons/MagnifyingPlus';
 export { Memory } from './Icons/Memory';
 export { Minus } from './Icons/Minus';
+export { MinusCircle } from './Icons/MinusCircle';
 export { Moon } from './Icons/Moon';
 export { MoreHoriz } from './Icons/MoreHoriz';
 export { MoreVert } from './Icons/MoreVert';
