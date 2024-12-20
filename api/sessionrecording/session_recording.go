@@ -14,6 +14,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+// Package sessionrecording can be used to read Teleport's
+// session recording files.
 package sessionrecording
 
 import (
