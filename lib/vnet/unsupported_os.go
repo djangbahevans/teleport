@@ -58,3 +58,8 @@ func configureOS(_ context.Context, _ *osConfig) error {
 func (_ *osConfigurator) doWithDroppedRootPrivileges(_ context.Context, _ func() error) (err error) {
 	return trace.Wrap(ErrVnetNotImplemented)
 }
+
+var (
+	// Satisfy unused linter.
+	_ = osConfigurationLoop
+)

@@ -171,7 +171,7 @@ func waitForService(ctx context.Context, scManager windows.Handle, serviceNamePt
 }
 
 // InstallService implements the vnet-install-service command, it must run as
-// adminstrator and installs the TeleportVNet Windows service.
+// administrator and installs the TeleportVNet Windows service.
 func InstallService(ctx context.Context, userSID string) error {
 	m, err := mgr.Connect()
 	if err != nil {

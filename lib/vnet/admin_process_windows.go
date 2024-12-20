@@ -64,7 +64,7 @@ func RunAdminProcess(ctx context.Context, cfg AdminProcessConfig) error {
 		return trace.Wrap(err, "dialing named pipe %s", pipePath)
 	}
 	conn.Close()
-	log.InfoContext(ctx, "Succesfully connected to user process over named pipe", "pipe", pipePath)
+	log.InfoContext(ctx, "Successfully connected to user process over named pipe", "pipe", pipePath)
 
 	device, err := tun.CreateTUN("TeleportVNet", mtu)
 	if err != nil {
@@ -77,8 +77,8 @@ func RunAdminProcess(ctx context.Context, cfg AdminProcessConfig) error {
 	}
 	log.InfoContext(ctx, "Created TUN interface", "tun", tunName)
 
-	// TODO(nklaassen): actually run the networking stack and OS configuration.
-	// For now, stay alive as long as we can dial the pipe.
+	// TODO(nklaassen): actually run VNet. For now, stay alive as long as we can
+	// dial the pipe.
 	for {
 		select {
 		case <-time.After(time.Second):
@@ -92,3 +92,9 @@ func RunAdminProcess(ctx context.Context, cfg AdminProcessConfig) error {
 		}
 	}
 }
+
+var (
+	// Satisfy unused linter.
+	// TODO(nklaassen): run os configuration loop in admin process.
+	_ = osConfigurationLoop
+)
