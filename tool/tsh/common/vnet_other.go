@@ -29,6 +29,7 @@ func newVnetCommands(app *kingpin.Application) *vnetCommands {
 
 var (
 	// Satisfy unused linter.
-	_ = (*vnetAppProvider)(nil)
 	_ = newVnetAppProvider
+	_ = newVnetCommand
+	_ = newVnetDaemonCommand
 )
