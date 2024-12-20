@@ -19,6 +19,7 @@ package vnet
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"github.com/gravitational/trace"
 	"golang.org/x/sync/errgroup"
@@ -27,20 +28,25 @@ import (
 func newProcessManager() (*ProcessManager, context.Context) {
 	ctx, cancel := context.WithCancel(context.Background())
 	g, ctx := errgroup.WithContext(ctx)
-	return &ProcessManager{
+	pm := &ProcessManager{
 		g:      g,
 		cancel: cancel,
 		closed: make(chan struct{}),
-	}, ctx
+	}
+	pm.closeOnce = sync.OnceFunc(func() {
+		close(pm.closed)
+	})
+	return pm, ctx
 }
 
 // ProcessManager handles background tasks needed to run VNet.
 // Its semantics are similar to an error group with a context, but it cancels the context whenever
 // any task returns prematurely, that is, a task exits while the context was not canceled.
 type ProcessManager struct {
-	g      *errgroup.Group
-	cancel context.CancelFunc
-	closed chan struct{}
+	g         *errgroup.Group
+	cancel    context.CancelFunc
+	closed    chan struct{}
+	closeOnce func()
 }
 
 // AddCriticalBackgroundTask adds a function to the error group. [task] is expected to block until
@@ -63,17 +69,17 @@ func (pm *ProcessManager) Wait() error {
 	err := pm.g.Wait()
 	select {
 	case <-pm.closed:
-		// Errors are expected after the process manager has been closed and the
-		// context has been canceled.
+		// Errors are expected after the process manager has been closed,
+		// usually due to context cancellation.
 		return nil
 	default:
+		return trace.Wrap(err)
 	}
-	return trace.Wrap(err)
 }
 
 // Close stops any active background tasks by canceling the underlying context,
 // and waits for all tasks to terminate. Close must not be called more than once.
 func (pm *ProcessManager) Close() {
-	close(pm.closed)
+	pm.closeOnce()
 	pm.cancel()
 }
