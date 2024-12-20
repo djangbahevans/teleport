@@ -20,8 +20,9 @@ import (
 	"fmt"
 
 	"github.com/alecthomas/kingpin/v2"
-	"github.com/gravitational/teleport/lib/vnet"
 	"github.com/gravitational/trace"
+
+	"github.com/gravitational/teleport/lib/vnet"
 )
 
 type vnetCLICommand interface {
