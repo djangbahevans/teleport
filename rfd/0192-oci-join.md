@@ -45,7 +45,7 @@ spec:
   oracle:
     allow:
       - tenancy: "ocid1.tenancy.oc1..<unique ID>"  # the OCID for Alice's tenancy
-        parent_compartments: "ocid1.compartment.oc1..<unique ID>" # the OCID for Alice's compartment
+        parent_compartments: ["ocid1.compartment.oc1..<unique ID>"] # the OCID for Alice's compartment
         # If needed, Alice can further restrict the compartments and regions
         # instances can join from.
 ```
@@ -136,7 +136,7 @@ to `http://127.0.0.1`. The address doesn't matter as the node will only use the
 signed headers and never make the request.
 - The node will create a second signed request, this time to
 `https://auth.{region}.oraclecloud.com/v1/authentication/authenticateClient`,
-and include the signed headers from the preivous request as the payload (the
+and include the signed headers from the previous request as the payload (the
 authenticateClient route is not documented in the Oracle docs, but the
 [request](https://docs.oracle.com/en-us/iaas/api/#/en/identity-dp/v1/datatypes/AuthenticateClientDetails)
 and [response](https://docs.oracle.com/en-us/iaas/api/#/en/identity-dp/v1/datatypes/AuthenticateClientResult)
